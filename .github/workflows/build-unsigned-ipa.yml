@@ -1,0 +1,61 @@
+name: Build HEV SOCKS5 iPhone IPA (unsigned)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Check out your fork of heiher/socks5-ios
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build the compatible HEV SOCKS5 server framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --recurse-submodules https://github.com/heiher/hev-socks5-server.git hev-socks5-server
+          (cd hev-socks5-server && chmod +x build-apple.sh && ./build-apple.sh)
+          test -d hev-socks5-server/HevSocks5Server.xcframework
+          rm -rf HevSocks5Server.xcframework
+          cp -R hev-socks5-server/HevSocks5Server.xcframework .
+
+      - name: Build unsigned iPhone app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Socks5.xcodeproj \
+            -scheme Socks5 \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            build
+
+      - name: Package IPA for Sideloadly
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d build/Build/Products/Release-iphoneos/Socks5.app
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/Socks5.app dist/Payload/
+          (cd dist && /usr/bin/zip -qr Socks5-USB-unsigned.ipa Payload)
+          test -s dist/Socks5-USB-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Socks5-USB-unsigned-IPA
+          path: dist/Socks5-USB-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
