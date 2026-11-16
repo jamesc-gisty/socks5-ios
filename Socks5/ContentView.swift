@@ -146,6 +146,12 @@ struct ContentView: View {
 
             HStack {
                 Button(action: {
+                    do {
+                        try SilentAudioKeepAlive.shared.start()
+                    } catch {
+                        print("Background audio failed: \(error)")
+                        return
+                    }
                     isRunning = true
                     DispatchQueue.global().async {
                         let conf = """
@@ -164,7 +170,10 @@ struct ContentView: View {
                               password: '\(authPassText)'
                             """
                         let _ = hev_socks5_server_main_from_str(conf, UInt32(strlen(conf)))
-                        isRunning = false
+                        DispatchQueue.main.async {
+                            SilentAudioKeepAlive.shared.stop()
+                            isRunning = false
+                        }
                     }
                 }) {
                     Text("Start")

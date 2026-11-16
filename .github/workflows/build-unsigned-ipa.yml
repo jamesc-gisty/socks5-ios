@@ -51,6 +51,28 @@ jobs:
           fi
 
           echo "Found app: $APP_PATH"
+          python3 - "$APP_PATH/Info.plist" <<'PY'
+          import plistlib
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "rb") as f:
+              info = plistlib.load(f)
+
+          modes = info.get("UIBackgroundModes", [])
+
+          if "audio" not in modes:
+              modes.append("audio")
+
+          info["UIBackgroundModes"] = modes
+
+          with open(path, "wb") as f:
+              plistlib.dump(info, f)
+
+          print("Enabled background audio mode")
+          PY
+
           mkdir -p "$PWD/Payload"
           cp -R "$APP_PATH" "$PWD/Payload/"
           zip -r Socks5-unsigned.ipa Payload
