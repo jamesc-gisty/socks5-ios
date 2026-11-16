@@ -5,6 +5,7 @@
 
 import SwiftUI
 import HevSocks5Server
+import AVFoundation
 
 struct ContentView: View {
     @State private var workersText: String = "4"
@@ -192,3 +193,53 @@ struct ContentView: View {
 #Preview {
     ContentView()
 }
+
+
+final class SilentAudioKeepAlive {
+    static let shared = SilentAudioKeepAlive()
+
+    private var engine: AVAudioEngine?
+
+    func start() throws {
+        guard engine == nil else { return }
+
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
+            .playback,
+            mode: .default,
+            options: [.mixWithOthers]
+        )
+        try session.setActive(true)
+
+        let audioEngine = AVAudioEngine()
+        let format = audioEngine.outputNode.inputFormat(forBus: 0)
+
+        let source = AVAudioSourceNode {
+            _, _, _, bufferList -> OSStatus in
+
+            for buffer in UnsafeMutableAudioBufferListPointer(bufferList) {
+                if let data = buffer.mData {
+                    memset(data, 0, Int(buffer.mDataByteSize))
+                }
+            }
+            return 0
+        }
+
+        audioEngine.attach(source)
+        audioEngine.connect(
+            source,
+            to: audioEngine.mainMixerNode,
+            format: format
+        )
+
+        try audioEngine.start()
+        engine = audioEngine
+    }
+
+    func stop() {
+        engine?.stop()
+        engine = nil
+        try? AVAudioSession.sharedInstance().setActive(false)
+    }
+}
+
