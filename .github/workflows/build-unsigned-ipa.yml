@@ -1,4 +1,5 @@
-name: Build HEV SOCKS5 iPhone IPA (unsigned)
+
+name: Build unsigned HEV Socks5 IPA
 
 on:
   workflow_dispatch:
@@ -8,54 +9,55 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+
     steps:
-      - name: Check out your fork of heiher/socks5-ios
+      - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Show Xcode version
-        run: xcodebuild -version
-
-      - name: Build the compatible HEV SOCKS5 server framework
-        shell: bash
+      - name: Show Xcode targets and bundled framework
         run: |
-          set -euo pipefail
-          git clone --recurse-submodules https://github.com/heiher/hev-socks5-server.git hev-socks5-server
-          (cd hev-socks5-server && chmod +x build-apple.sh && ./build-apple.sh)
-          test -d hev-socks5-server/HevSocks5Server.xcframework
-          rm -rf HevSocks5Server.xcframework
-          cp -R hev-socks5-server/HevSocks5Server.xcframework .
+          xcodebuild -version
+          xcodebuild -list -project Socks5.xcodeproj
+          test -f HevSocks5Server.xcframework/Info.plist || {
+            echo "ERROR: Missing HevSocks5Server.xcframework in the fork"
+            exit 1
+          }
 
-      - name: Build unsigned iPhone app
-        shell: bash
+      - name: Build without code signing
         run: |
-          set -euo pipefail
           xcodebuild \
             -project Socks5.xcodeproj \
-            -scheme Socks5 \
+            -target Socks5 \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath "$PWD/build" \
+            SYMROOT="$PWD/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY='' \
+            CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Package IPA for Sideloadly
-        shell: bash
+      - name: Package IPA
         run: |
-          set -euo pipefail
-          test -d build/Build/Products/Release-iphoneos/Socks5.app
-          mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/Socks5.app dist/Payload/
-          (cd dist && /usr/bin/zip -qr Socks5-USB-unsigned.ipa Payload)
-          test -s dist/Socks5-USB-unsigned.ipa
+          set -e
+          echo "Searching for compiled iPhone app..."
+          APP_PATH=$(find "$PWD/build" -type d -name "Socks5.app" -print -quit)
 
-      - name: Upload unsigned IPA
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: No compiled Socks5.app found"
+            find "$PWD/build" -maxdepth 5 -type d
+            exit 1
+          fi
+
+          echo "Found app: $APP_PATH"
+          mkdir -p "$PWD/Payload"
+          cp -R "$APP_PATH" "$PWD/Payload/"
+          zip -r Socks5-unsigned.ipa Payload
+
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Socks5-USB-unsigned-IPA
-          path: dist/Socks5-USB-unsigned.ipa
+          name: Socks5-unsigned
+          path: Socks5-unsigned.ipa
           if-no-files-found: error
-          retention-days: 14
